@@ -18,68 +18,126 @@
 //includes
 #include <msp430.h>
 #include "loadCellFunks.h"
+#include "serial_handler.h"
 
 // defines
-#define END	8
+#define END	7		// length of tx string
 
 // functions
-void UART_init();
-void num2str(long int);
+//void UART_init();
+void num2str(unsigned long int);
+//void UART_wd(unsigned long int);
+//void UART_ws(char*);
+//void UART_read();
 
 // global variables
-long int data;
-char buffer[END] = { "0" };
-unsigned char i, dataFlag=0;
+unsigned long int data;
+unsigned char sampDataFlag = 0;
+char buffer;
 
 
 /*
  * mainloop
  */
-int main(void)
-{
+int main(void){
   WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
 
-  UART_init();
-  loadCellInit();
+  // timer interrupt initialization
+  CCTL0 = CCIE;                         // CCR0 interrupt enabled
+  CCR0 = 512-1;							// set for PWM, for samp is 24*512 cycles
+  TACTL = TASSEL_2 | MC_1 | ID_3;       // SMCLK, upmode, divide by 8 (1MHz / 8 = 125 kHz)
+
+  // PWM init
+  P1DIR |= BIT6;                            // P1.2 output
+  P1SEL |= BIT6;                            // P1.2 for TA0.1 output
+  P1SEL2 = 0;								// Select default function for P1.2
+  CCTL1 = OUTMOD_7;                         // CCR1 reset/set
+  CCR1 = 189;                               // CCR1 PWM duty cycle
+
+
+  // other intializations
+  uart_init(8);							// initialize UART
+  loadCellInit();						// initialize pins for load cell
 
   // Flash ReLED to verify initialization
-  P1DIR &= ~BIT0;
+  P1DIR |= BIT0;
   P1OUT |= BIT0;
   __delay_cycles(0xFFFF);
   __delay_cycles(0xFFFF);
   __delay_cycles(0xFFFF);
   P1OUT &= ~BIT0;
 
-  // enable interrupts
-  __bis_SR_register(GIE);
-
+  __bis_SR_register(CPUOFF);
 
   while(1){
-	  data = readData(HI_GAIN);
-	  num2str(data);
-	  __bis_SR_register(GIE);
+
+	  if(sampDataFlag == 24){
+		  data = readData(HI_GAIN);
+		  num2str(data);
+		  uart_write_string(0,8);
+		  P1OUT ^= BIT0;			// Toggle P1.0, visual indicator
+		  sampDataFlag = 0;
+	  }
+
+
+	  if(rx_flag == 1){
+
+//		   test UART rx is working
+//		  tx_data_str[0] = uart_get_char(0);
+//		  uart_write_string(0,1);
+
+		  buffer = uart_get_char(0);
+
+		  if(buffer == 'S'){
+			  strcpy(tx_data_str,"\r\nreceived: S\r\n");
+			  uart_write_string(0,15);
+			  CCR1 = 189;
+		  }
+		  else if(buffer == 'R'){
+			  strcpy(tx_data_str,"\r\nreceived: R\r\n");
+			  uart_write_string(0,15);
+			  CCR1 = 125;
+		  }
+		  else if(buffer == 'F'){
+			  strcpy(tx_data_str,"\r\nreceived: F\r\n");
+			  uart_write_string(0,15);
+			  CCR1 = 250;
+		  }
+		  else if(buffer == 'Q'){
+			  P1DIR &= ~BIT6;
+			  __bis_SR_register(CPUOFF);
+		  }
+		  rx_flag = 0;
+	  }
   }
 }
 
 
+
 /*
- * UART interrupt
+ * 				   ----- Timer A0 interrupt -----
  *
- * send load cell data to computer for plotting/digestion
+ * This interrupt establishes a sampling frequency as determined
+ * by TA0CCR0 (CCR0) above. MSP430 will only sample when sampDataFlag
+ * is set high (max slave fs = 10Hz)
  *
  */
-#pragma vector=USCIAB0TX_VECTOR
-__interrupt void USCI0TX_ISR(void)
+#pragma vector=TIMER0_A0_VECTOR
+__interrupt void Timer_A (void)
 {
-	while (!(IFG2&UCA0TXIFG));                // USCI_A0 TX buffer ready?
-	UCA0TXBUF = buffer[i];
-	i++;
-	if(i>END){
-		dataFlag = 0;
-		i = 0;
-		__bis_SR_register(GIE);
-	}
+  sampDataFlag += 1;
 }
+
+
+
+/*
+ * 					    ----- Functions -----
+ *
+ * Local functions related specifically to sending load cell data
+ * to the computer. All of the load-cell-data read and interfacing
+ * functions are located in the source files.
+ *
+ */
 
 
 // UART initialization
@@ -98,25 +156,63 @@ void UART_init(){
 	  UCA0BR1 = 0;                              // 1MHz 115200
 	  UCA0MCTL = UCBRS2 + UCBRS0;               // Modulation UCBRSx = 5
 	  UCA0CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
-	  IE2 |= UCA0TXIE;                          // Enable USCI_A0 RX interrupt
 }
 
 
 //convert data to a string and copy the result into the variable buffer
-void num2str(long int data){
-	char string[END], i;
+void num2str(unsigned long int data){
+	unsigned char i;
 
-	for(i=0; i<END; i++){
-		string[i] = (data % 10)+'0';	//
+	for(i=0; i<24; i++){
+		tx_data_str[i] = '\0';
+	}
+
+	for(i=END-1; i>0; i--){				// begin at end of array
+		tx_data_str[i] = (data % 10)+'0';	//
 		data /= 10;
 	}
 
-	string[END-1] = ',';
-
-	strcpy(buffer, string);
 }
 
 
+// UART write data
+//void UART_wd(unsigned long int data){
+//	char *toSend = num2str(data);
+//	unsigned char i;
+//
+//	for(i=0; i<END; i++){
+//		while (!(IFG2&UCA0TXIFG));            // USCI_A0 TX buffer ready?
+//		UCA0TXBUF = toSend[i];
+//	}
+//
+//	while (!(IFG2&UCA0TXIFG));                // USCI_A0 TX buffer ready?
+//	UCA0TXBUF = ',';
+//
+//	while (!(IFG2&UCA0TXIFG));                // USCI_A0 TX buffer ready?
+//	UCA0TXBUF = '\r';
+//
+//	while (!(IFG2&UCA0TXIFG));                // USCI_A0 TX buffer ready?
+//	UCA0TXBUF = '\n';
+////	while (!(IFG2&UCA0TXIFG));
+////	UCA0TXBUF = buffer;
+//}
+//
+//// UART write string
+//void UART_ws(char* txt){
+//	int size = sizeof(txt)/sizeof(txt[0]);
+//	unsigned char i;
+//
+//	for(i=0; i<size; i++){
+//		while (!(IFG2&UCA0TXIFG));
+//		UCA0TXBUF = txt[i];
+//	}
+//}
+
+
+
+void UART_read(){
+	buffer = UCA0RXBUF;
+}
 
 
 

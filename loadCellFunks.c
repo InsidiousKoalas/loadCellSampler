@@ -14,7 +14,7 @@ void loadCellInit(){
 
 
 // read data from chip
-long int readData(int gain){
+unsigned long int readData(int gain){
 	long int data = 0;
 	unsigned char i;
 
