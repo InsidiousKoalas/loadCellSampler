@@ -21,17 +21,14 @@
 #include "serial_handler.h"
 
 // defines
-#define END	7		// length of tx string
+#define NUM_LENG	8		// length of max 24-bit number reading (2^(24) = 16777216, 8 chars long)
 
 // functions
-//void UART_init();
-void num2str(unsigned long int);
-//void UART_wd(unsigned long int);
-//void UART_ws(char*);
-//void UART_read();
+void num2str(long int);
+long int absVal(long int);
 
 // global variables
-unsigned long int data;
+long int data;
 unsigned char sampDataFlag = 0;
 char buffer;
 
@@ -42,10 +39,10 @@ char buffer;
 int main(void){
   WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
 
-  // timer interrupt initialization
-  CCTL0 = CCIE;                         // CCR0 interrupt enabled
-  CCR0 = 512-1;							// set for PWM, for samp is 24*512 cycles
-  TACTL = TASSEL_2 | MC_1 | ID_3;       // SMCLK, upmode, divide by 8 (1MHz / 8 = 125 kHz)
+  // Timer interrupt init
+  CCTL0 = CCIE;                         	// CCR0 interrupt enabled
+  CCR0 = 512-1;								// set for PWM
+  TACTL = TASSEL_2 | MC_1 | ID_3;       	// SMCLK, upmode, divide by 8 (1MHz / 8 = 125 kHz)
 
   // PWM init
   P1DIR |= BIT6;                            // P1.2 output
@@ -58,56 +55,53 @@ int main(void){
   // other intializations
   uart_init(8);							// initialize UART
   loadCellInit();						// initialize pins for load cell
+  int gain = HI_GAIN;					// see loadCellFunks.h for different gain levels
+
+  int timerCycles = 12500/CCR0;			// 0.1 sec * 125000 Hz / 511 cycles = 24.5 = 24 cycs
 
   // Flash ReLED to verify initialization
-  P1DIR |= BIT0;
+  P1DIR |= BIT0;				// enable ReLED
   P1OUT |= BIT0;
   __delay_cycles(0xFFFF);
   __delay_cycles(0xFFFF);
   __delay_cycles(0xFFFF);
   P1OUT &= ~BIT0;
+  P1DIR &= ~BIT6;				// disable PWM on startup
 
   __bis_SR_register(CPUOFF);
 
+
   while(1){
 
-	  if(sampDataFlag == 24){
-		  data = readData(HI_GAIN);
+	  // if ( 100 ms have passed since previous sample ) ...
+	  if(sampDataFlag == timerCycles){				// 24*CCR0 = 12288 cycles; 12288/125kHz = 98.1 ms
+		  data = readData(gain);			//
 		  num2str(data);
-		  uart_write_string(0,8);
+		  uart_write_string(0,NUM_LENG+2);		// add one for sign, one for comma
 		  P1OUT ^= BIT0;			// Toggle P1.0, visual indicator
 		  sampDataFlag = 0;
 	  }
 
 
+	  // if ( command has been received ) ...
 	  if(rx_flag == 1){
 
-//		   test UART rx is working
-//		  tx_data_str[0] = uart_get_char(0);
-//		  uart_write_string(0,1);
+		  buffer = uart_get_char(0);		// copy received char to buffer variable
 
-		  buffer = uart_get_char(0);
-
-		  if(buffer == 'S'){
-			  strcpy(tx_data_str,"\r\nreceived: S\r\n");
-			  uart_write_string(0,15);
+		  if(buffer == 'S'){				// Stop command, halt
 			  CCR1 = 189;
 		  }
-		  else if(buffer == 'R'){
-			  strcpy(tx_data_str,"\r\nreceived: R\r\n");
-			  uart_write_string(0,15);
+		  else if(buffer == 'R'){			// Reverse command
 			  CCR1 = 125;
 		  }
-		  else if(buffer == 'F'){
-			  strcpy(tx_data_str,"\r\nreceived: F\r\n");
-			  uart_write_string(0,15);
+		  else if(buffer == 'F'){			// Forward command
 			  CCR1 = 250;
 		  }
-		  else if(buffer == 'Q'){
-			  P1DIR &= ~BIT6;
-			  __bis_SR_register(CPUOFF);
+		  else if(buffer == 'Q'){			// Quit command
+			  P1DIR &= ~BIT6;				// turn off PWM
+			  __bis_SR_register(CPUOFF);	// turn off CPU
 		  }
-		  rx_flag = 0;
+		  rx_flag = 0;		// clr rx_flag
 	  }
   }
 }
@@ -119,13 +113,13 @@ int main(void){
  *
  * This interrupt establishes a sampling frequency as determined
  * by TA0CCR0 (CCR0) above. MSP430 will only sample when sampDataFlag
- * is set high (max slave fs = 10Hz)
+ * reaches the timerCycles variable. This establishes an fs of 10 Hz.
  *
  */
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void Timer_A (void)
 {
-  sampDataFlag += 1;
+  sampDataFlag++;
 }
 
 
@@ -135,86 +129,70 @@ __interrupt void Timer_A (void)
  *
  * Local functions related specifically to sending load cell data
  * to the computer. All of the load-cell-data read and interfacing
- * functions are located in the source files.
+ * functions are located in the source and headers files "loadCellFunks.x"
+ *
  *
  */
 
 
-// UART initialization
-void UART_init(){
-	  if (CALBC1_1MHZ==0xFF)					// If calibration constant erased
-	  {
-	    while(1);                               // do not load, trap CPU!!
-	  }
-	  DCOCTL = 0;                               // Select lowest DCOx and MODx settings
-	  BCSCTL1 = CALBC1_1MHZ;                    // Set DCO
-	  DCOCTL = CALDCO_1MHZ;
-	  P1SEL = BIT1 + BIT2 ;                     // P1.1 = RXD, P1.2=TXD
-	  P1SEL2 = BIT1 + BIT2;
-	  UCA0CTL1 |= UCSSEL_2;                     // SMCLK
-	  UCA0BR0 = 8;                              // 1MHz 115200
-	  UCA0BR1 = 0;                              // 1MHz 115200
-	  UCA0MCTL = UCBRS2 + UCBRS0;               // Modulation UCBRSx = 5
-	  UCA0CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
-}
+/*
+ *  === num2str ===
+ *
+ *  This num2str command converts a signed 24 bit number to a string of
+ *  characters which populate the tx_data_str[] buffer. The string is NUM_LENG
+ *  characters long plus a sign character and a comma for parsing.
+ *
+ *  If the number is fewer than 7 digits, zeros are placed before the number
+ *  and sign bit as MatLab automatically parses the leading zeros. This also
+ *  maintains a consistent tx string length. Ex:
+ *
+ *  	data = 2450;
+ *  	num2str(data) = "00002450,";
+ *
+ *  	data = -52000;
+ *  	num2str(data) = "00-52000,";
+ *
+ *
+ */
+void num2str(long int data){
+	unsigned char i, negFlag, ndx;
+	int shft = sizeof(data)*8;		// length of (long int) in bits
 
-
-//convert data to a string and copy the result into the variable buffer
-void num2str(unsigned long int data){
-	unsigned char i;
-
-	for(i=0; i<24; i++){
-		tx_data_str[i] = '\0';
+	if(data&(0x00800000)){			// if 24th bit is 1 (num is neg)...
+		data = absVal(data);		// get the equivalent positive number
+		negFlag = 1;				// set flag indicating data is negative
 	}
 
-	for(i=END-1; i>0; i--){				// begin at end of array
-		tx_data_str[i] = (data % 10)+'0';	//
+	for(i=NUM_LENG; i>0; i--){				// begin at end of array, iterate to zero
+		tx_data_str[i] = (data % 10)+'0';	// clips LSB and stores to corresponding pos. in str.
 		data /= 10;
+		if(tx_data_str[i] != '0')(ndx=i);	// if ( number is not zero ) { save ndx of this number }
 	}
 
+
+	if(negFlag == 1){
+		tx_data_str[ndx-1] = '-';	// print sign character if data is negative
+	}
 }
 
 
-// UART write data
-//void UART_wd(unsigned long int data){
-//	char *toSend = num2str(data);
-//	unsigned char i;
-//
-//	for(i=0; i<END; i++){
-//		while (!(IFG2&UCA0TXIFG));            // USCI_A0 TX buffer ready?
-//		UCA0TXBUF = toSend[i];
-//	}
-//
-//	while (!(IFG2&UCA0TXIFG));                // USCI_A0 TX buffer ready?
-//	UCA0TXBUF = ',';
-//
-//	while (!(IFG2&UCA0TXIFG));                // USCI_A0 TX buffer ready?
-//	UCA0TXBUF = '\r';
-//
-//	while (!(IFG2&UCA0TXIFG));                // USCI_A0 TX buffer ready?
-//	UCA0TXBUF = '\n';
-////	while (!(IFG2&UCA0TXIFG));
-////	UCA0TXBUF = buffer;
-//}
-//
-//// UART write string
-//void UART_ws(char* txt){
-//	int size = sizeof(txt)/sizeof(txt[0]);
-//	unsigned char i;
-//
-//	for(i=0; i<size; i++){
-//		while (!(IFG2&UCA0TXIFG));
-//		UCA0TXBUF = txt[i];
-//	}
-//}
+/*
+ *  === absVal ===
+ *
+ *  absolute val for a 24 bit signed number in a 32 bit register.
+ *
+ *  This function takes the 2's complement of the entire 32 bit number,
+ *  then sets the most significant 8 bits to zero. This returns the magnitude
+ *  of the negative number
+ */
 
+long int absVal(long int num){
 
+	if(data&(0x00800000)){			// only takes 2's comp if num is < 0
+		num = ~num;					// undo two's complement
+		num++;						// undo two's complement
+		num &= ~0xFF000000;			// clears most sig. bits
+	}
 
-void UART_read(){
-	buffer = UCA0RXBUF;
+	return num;
 }
-
-
-
-
-

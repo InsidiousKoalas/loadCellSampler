@@ -6,7 +6,6 @@
  */
 #include  "msp430.h"
 #define uart_max 64
-#define i2c_max  64
 
 unsigned char tx_data_str[uart_max], rx_data_str[uart_max], rx_flag=0, dec_str[6], eos_flag=0;
 char dec_char[6];
@@ -49,6 +48,8 @@ void uart_write_string(int vals, int vale){
 		UCA0TXBUF=tx_data_str[i];
 	}
 	while (!(IFG2&UCA0TXIFG));
+	UCA0TXBUF=',';
+	while (!(IFG2&UCA0TXIFG));
 	UCA0TXBUF='\n';
 	while (!(IFG2&UCA0TXIFG));
 	UCA0TXBUF='\r';
@@ -90,7 +91,7 @@ __interrupt void USCI0RX_ISR(void)
 //		rx_data_str[rx_flag]=UCA0RXBUF;				// data is stored in rx_data_str
 		rx_data_str[0]=UCA0RXBUF;				// data is stored in rx_data_str
 		temp=rx_data_str[0];
-		while (!(IFG2&UCA0TXIFG));
+//		while (!(IFG2&UCA0TXIFG));
 		//	UCA0TXBUF=temp;
 //		if (rx_data_str[rx_flag]=='\r')				// new line or carriage return set eos_flag global variable
 //			eos_flag=1;
@@ -100,12 +101,10 @@ __interrupt void USCI0RX_ISR(void)
 		if (rx_flag>uart_max){							// maximum of characters starts at the beginning again
 			rx_flag=1;
 		}
-		if(rx_data_str[0] == 'G'){					// "go"
-			__bic_SR_register_on_exit(CPUOFF);
-			strcpy(tx_data_str,"\r\nreceived: G\r\n");
-			uart_write_string(0,15);
-			CCR1 = 250;
-			P1DIR |= BIT6;
+		if(rx_data_str[0] == 'G'){					// Go command
+			__bic_SR_register_on_exit(CPUOFF);		// reenable CPU
+			CCR1 = 250;								// send PWM signal (same as forward)
+			P1DIR |= BIT6;							// reenable PWM
 		}
 	rx_flag = 1;
 	}
@@ -114,6 +113,8 @@ __interrupt void USCI0RX_ISR(void)
 char uart_get_char(int num){
 	return rx_data_str[num];
 }
+
+
 void uart_set_char(char tx_data,int num){
 	tx_data_str[num]=tx_data;
 }

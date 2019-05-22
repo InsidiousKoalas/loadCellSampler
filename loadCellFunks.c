@@ -6,15 +6,17 @@
  */
 #include "loadCellFunks.h"
 
+// Initialize pins
 void loadCellInit(){
-	P1DIR |= CLK;
-	P1OUT &= ~CLK;
-	P1DIR &= ~SDI;
+	P1DIR |= CLK;		// set CLK as output
+	P1OUT &= ~CLK;		// set CLK low
+	P1DIR &= ~SDI;		// set SDI as input
 }
 
 
-// read data from chip
-unsigned long int readData(int gain){
+
+// read data from HX711 chip
+long int readData(int gain){
 	long int data = 0;
 	unsigned char i;
 
@@ -39,6 +41,11 @@ unsigned long int readData(int gain){
 		HOLD;						// wait
 		P1OUT &= ~CLK;				// toggle clock
 		HOLD;						// wait
+	}
+
+	if(data&(0x08000000)){			// if 24th bit is 1 (num is neg)...
+		data = ~data;				// invert numbers
+		data++;						// add one (two's comp)
 	}
 
 	return data;

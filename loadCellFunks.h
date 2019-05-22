@@ -9,6 +9,7 @@
 #ifndef LOADCELLFUNKS_H_
 #define LOADCELLFUNKS_H_
 
+
 // Various defines
 #define 	SDI			0x08
 #define 	CLK 		0x10
@@ -20,7 +21,7 @@
 
 // Functions
 void loadCellInit();
-unsigned long int readData(int);
+long int readData(int);
 
 
 #endif /* LOADCELLFUNKS_H_ */
