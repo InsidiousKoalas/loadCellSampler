@@ -7,9 +7,9 @@
 #include  "msp430.h"
 #define uart_max 64
 
-unsigned char tx_data_str[uart_max], rx_data_str[uart_max], rx_flag=0, dec_str[6], eos_flag=0;
-char dec_char[6];
-int tx_ptr,e_tx_ptr;
+unsigned char tx_data_str[uart_max], rx_data_str[uart_max], dec_str[6], eos_flag=0;
+char dec_char[6], cmdAry[5] = { "QSFRG" };
+int tx_ptr,e_tx_ptr, rx_ndx=0;
 
 void uart_init(int br){
 	volatile int temp=0;
@@ -47,8 +47,6 @@ void uart_write_string(int vals, int vale){
 		while (!(IFG2&UCA0TXIFG));
 		UCA0TXBUF=tx_data_str[i];
 	}
-	while (!(IFG2&UCA0TXIFG));
-	UCA0TXBUF=',';
 	while (!(IFG2&UCA0TXIFG));
 	UCA0TXBUF='\n';
 	while (!(IFG2&UCA0TXIFG));
@@ -88,25 +86,36 @@ __interrupt void USCI0RX_ISR(void)
 {
 	volatile char temp;
 	if(IFG2 & UCA0RXIFG){							// Receive data on UART
-//		rx_data_str[rx_flag]=UCA0RXBUF;				// data is stored in rx_data_str
-		rx_data_str[0]=UCA0RXBUF;				// data is stored in rx_data_str
-		temp=rx_data_str[0];
-//		while (!(IFG2&UCA0TXIFG));
-		//	UCA0TXBUF=temp;
-//		if (rx_data_str[rx_flag]=='\r')				// new line or carriage return set eos_flag global variable
-//			eos_flag=1;
-//		if (rx_data_str[rx_flag]=='\n')
-//			eos_flag=1;
-//		rx_flag++;
-		if (rx_flag>uart_max){							// maximum of characters starts at the beginning again
-			rx_flag=1;
+
+
+		unsigned char i;
+
+
+		// if a char is received, for it to first position
+		for(i=0; i<5; i++){		// 5 is # of command chars
+			if(UCA0RXBUF == cmdAry[i])(rx_ndx = 0);
 		}
-		if(rx_data_str[0] == 'G'){					// Go command
+
+
+		rx_data_str[rx_ndx]=UCA0RXBUF;				// data is stored in rx_data_str
+		rx_ndx++;
+
+//		 print chars to putty
+//		while (!(IFG2&UCA0TXIFG));
+//		if(rx_ndx < 5){
+//			UCA0TXBUF=UCA0RXBUF;
+//		}
+
+		if (rx_ndx == 5) {		// if ( end of data )
+			eos_flag = 1;
+			rx_ndx = 0;
+		}
+
+		if((rx_data_str[0] == 'G') && (rx_ndx == 0)){					// Go command, only works if rx_ndx == 0
 			__bic_SR_register_on_exit(CPUOFF);		// reenable CPU
-			CCR1 = 250;								// send PWM signal (same as forward)
+			pulseOut("F000");
 			P1DIR |= BIT6;							// reenable PWM
 		}
-	rx_flag = 1;
 	}
 }
 

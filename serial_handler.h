@@ -8,7 +8,7 @@
 #ifndef SERIAL_HANDLER_H_
 #define SERIAL_HANDLER_H_
 
-extern unsigned char tx_data_str[24], rx_data_str[24],rx_flag ,dec_str[7],eos_flag;
+extern unsigned char tx_data_str[24], rx_data_str[24],rx_ndx ,dec_str[7],eos_flag;
 extern char dec_char[6];
 void uart_init(int);
 void uart_write_string(int,int);
