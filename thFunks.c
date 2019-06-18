@@ -19,6 +19,8 @@
 #include "thFunks.h"
 
 #define HOLD __delay_cycles(0x0FF);
+#define  CHK_TO	if(TA1R>(tic+30)){ P1DIR |= DATA; return 1;}
+
 
 volatile char thBuffer[5] = { 0 }, restFlag = 0;		// change to char when
 
@@ -36,31 +38,36 @@ void thStart(){
 	P1OUT &= ~DATA;
 
 	// wait for 18 ms (unobtrusive, frees CPU)
-	TA1CCR0 = TA1R+4500;		// 18 ms * 250 kHz = 4500 cycles
+	TA1CCR0 = TA1R+5000;		// 18 ms * 250 kHz = 4500 cycles
 }
 
 int thRead(){
 	unsigned char thNdx, bit, checkSum;
-	unsigned int i, tic;
+	unsigned int tic;
 
 	TA1CCTL2 &= ~CCIE;
-	P1OUT |= DATA;
-	__delay_cycles(20);
+//	P1OUT |= DATA;
+//	__delay_cycles(5);
 
 	P1DIR &= ~DATA;		// switch dataline to input
-
+	__delay_cycles(5);
 	// ignore first DHT pulse
+	tic = TA1R;
 	while(P1IN & DATA){	// trap line, wait to go low
-		if(i>65000){
-			P1DIR |= DATA;
-			return 1;
-		}
-		i++;
+		CHK_TO
 	}
 	__delay_cycles(5);
-	while(!(P1IN & DATA))	// trap line, wait to go high
-		__delay_cycles(5);
-	while(P1IN & DATA);	// trap line again
+
+	tic = TA1R;
+	while(!(P1IN & DATA)){	// trap line, wait to go high
+		CHK_TO
+	}
+	__delay_cycles(5);
+
+	tic = TA1R;
+	while(P1IN & DATA){	// trap line again
+		CHK_TO
+	}
 	__delay_cycles(5);
 
 	for(thNdx=0; thNdx<5; thNdx++){		// for ( each pos in array ) ...
@@ -68,20 +75,20 @@ int thRead(){
 		P1OUT ^= BIT0;
 		for(bit=0; bit<8; bit++){		// for ( each bit in byte ) ...
 			thBuffer[thNdx] <<= 1;
-			while(!(P1IN & DATA));		// hold while line low, wait to go high
-
-//			__delay_cycles(28);			// threshold time; if line is 0 at this time, data is 0; else, 1
 
 			tic = TA1R;
-			while(TA1R<(tic+6));		// hold for length of clock pulse
+			while(!(P1IN & DATA)){		// hold while line low, wait to go high
+				CHK_TO
+			}
+
+			__delay_cycles(28);			// threshold time; if line is 0 at this time, data is 0; else, 1
+
+//			tic = TA1R;
+//			while(TA1R<(tic+6));		// hold for length of clock pulse
 
 			if(P1IN&DATA)(thBuffer[thNdx] |= 1);
 			while(P1IN & DATA){
-				if(i>65000){
-					P1DIR |= DATA;
-					return 1;
-				}
-				i++;
+				CHK_TO
 			}
 
 		}
@@ -97,7 +104,7 @@ int thRead(){
 
 
 	P1DIR |= DATA;		// return to output
-	TA1CCR0 = 0xFFFF;	// maximum integer value
+	TA1CCR0 = TA1R+0xFFFF;	// maximum integer value
 	restFlag = 1;
 	return 0;
 

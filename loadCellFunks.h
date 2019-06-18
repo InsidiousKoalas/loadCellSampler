@@ -11,7 +11,7 @@
 
 
 // Various defines
-#define 	SDI			0x08
+#define 	SDI			0x20
 #define 	CLK 		0x10
 #define 	HOLD		__delay_cycles(8)
 #define		HI_GAIN		25

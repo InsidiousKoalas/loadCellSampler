@@ -11,6 +11,7 @@
 
 #define	 DATA	0x80
 
+
 extern volatile char thBuffer[5], restFlag, sampNdx;
 
 void thInit();

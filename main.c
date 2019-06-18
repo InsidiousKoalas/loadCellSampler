@@ -38,7 +38,7 @@
 #include "thFunks.h"
 
 // defines
-#define FRAME_LENGTH  15		// length of max 24-bit number reading (2^(24) = 16777216, 8 chars long)
+#define FRAME_LENGTH  17		// length of max 24-bit number reading (2^(24) = 16777216, 8 chars long)
 #define BUFF_LENG	  4		// length of received UART buffer excluding the \n terminator
 #define	FULL_STP	  375		// for 50Hz PWM
 #define FULL_FOR	  480		// ""
@@ -51,7 +51,7 @@
 
 // functions
 void num2str24(long int);
-void num2str(volatile char*);
+void th2str(volatile char*);
 long int absVal(long int);
 void pulseOut(char*);
 void pulseOutParabolic(char* cmd);
@@ -59,7 +59,7 @@ void pulseOutParabolic(char* cmd);
 // global variables
 long int data;
 unsigned char sampDataFlag = 0, thState = 0, thRefreshFlag = 0;
-char buffer[BUFF_LENG];
+char buffer[BUFF_LENG], DHT_REST[2] = {5,10}, TH_REST_ST = 0;
 int loopCounter = 0;
 
 
@@ -89,6 +89,14 @@ int main(void){
   int error;
   thInit();
 
+  // Port interupt
+  P1REN |= BIT3;                   // Enable internal pull-up/down resistors
+  P1OUT |= BIT3;                   //Select pull-up mode for P1.3
+  P1IE |= BIT3;                       // P1.3 interrupt enabled
+  P1IES |= BIT3;                     // P1.3 Hi/lo edge
+  P1IFG &= ~BIT3;                  // P1.3 IFG cleared
+
+
   // other intializations
   uart_init(8);							// initialize UART
   loadCellInit();						// initialize pins for load cell
@@ -108,6 +116,7 @@ int main(void){
   P1DIR &= ~BIT6;				// disable PWM on startup
 
 
+  th2str(thBuffer);		// init tx string
   __bis_SR_register(CPUOFF);			// Turn off CPU, wait for start command
 //  pulseOut("F000");
 
@@ -136,16 +145,17 @@ int main(void){
 	  // if ( 100 ms have passed since previous sample ) ...
 	  if(sampDataFlag >= timerCycles){				// timerCycles*
 		  data = readData(gain);
+//		  data = 0x0000;
 		  num2str24(data);
 
 		  if(thRefreshFlag == 1){
-			  num2str(thBuffer);
+			  th2str(thBuffer);
 			  thRefreshFlag = 0;
 		  }
 		  else{
 			  unsigned char i;
-			  for(i=10; i<16; i++){		// sign, 8bits, comma, 2 bits, comma, 3 bits
-				  if(i==12){
+			  for(i=10; i<FRAME_LENGTH+1; i++){		// sign, 8bits, comma, 2 bits, comma, 3 bits
+				  if(i==13){
 					  continue;		// do not overwrite comma
 				  }
 				  tx_data_str[i] = 'X';
@@ -231,7 +241,7 @@ __interrupt void Timer_A1(void)
 		break;
 	case 3:				// waiting for thSensor to rest
 		loopCounter++;
-		if(loopCounter == 5){		// 5 loops ~=~ 1.25 seconds, max fs = 1hz
+		if(loopCounter >= DHT_REST[TH_REST_ST]){		// 10 loops ~=~ 2.5 seconds, max fs = 0.5hz
 			thState = 0;	// ready to wake sensor up
 			loopCounter = 0;
 		}
@@ -241,6 +251,17 @@ __interrupt void Timer_A1(void)
 	}
 	TA1CCTL0 &= ~CCIFG;
 }
+
+
+
+// Port 1 interrupt service routine
+#pragma vector=PORT1_VECTOR
+__interrupt void Port_1(void)
+{
+   TH_REST_ST ^= 0x01;
+   P1IFG &= ~BIT3;                     // P1.3 IFG cleared
+}
+
 
 
 /*
@@ -296,31 +317,47 @@ void num2str24(long int data){
 
 
 /*
- *  === num2str ===
+ *  === th2str ===
  *
  *  Converts an array of numbers (configured for use with thBuffer) into their corresponding
  *  string and populates the next 6 characters of tx_send_str[] accordingly.
  *
  */
-void num2str(volatile char* thData){
+void th2str(volatile char* thData){
+	int temp[2] = { 0 };
 
+	temp[0] = (int) thData[0]<<8;
+	temp[0] |= thData[1];
+	temp[1] = (int) thData[2]<<8;
+	temp[1] |= thData[3];
+
+
+	// RH data
 	tx_data_str[9] = ',';
 
-	tx_data_str[11] = thData[0]%10+'0';
-	thData[0] /= 10;
-	tx_data_str[10] = thData[0]%10+'0';
+	tx_data_str[12] = temp[0]%10+'0';
+	temp[0] /= 10;
+	tx_data_str[11] = temp[0]%10+'0';
+	temp[0] /= 10;
+	tx_data_str[10] = temp[0]%10+'0';
 
-	tx_data_str[12] = ',';
+	tx_data_str[13] = ',';
 
-	tx_data_str[14] = thData[2]%10+'0';
-	thData[2] /= 10;
-	tx_data_str[13] = thData[2]%10+'0';
+	// Temp Data - check negtative
+	if(temp[1]&0x8000){
+		tx_data_str[14] = '-';
+		temp[1] ^= 0x8000;
+	}
+	else{
+		tx_data_str[14] = '0';
+	}
 
-	// if decimal value is greater than 10
-	if(thData[3]>9)(thData[3]/=10);
-
-	tx_data_str[15] = thData[3]+'0';
-	tx_data_str[16] = ',';
+	tx_data_str[17] = temp[1]%10+'0';
+	temp[1] /= 10;
+	tx_data_str[16] = temp[1]%10+'0';
+	temp[1] /= 10;
+	tx_data_str[15] = temp[1]+'0';
+	tx_data_str[18] = ',';
 
 }
 
