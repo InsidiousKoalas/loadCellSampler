@@ -7,8 +7,10 @@
  * The purpose of this code is to sample the load cell (over SPI)
  * and send the data to a computer via UART.
  *
+ * P1.5 --> SDI
  * P1.4 --> CLK
- * P1.3 --> SDI
+ *
+ * P1.3 --> ADC (battery voltage)
  *
  * P1.2	-->	TX (RX on computer side)
  * P1.1 --> RX (TX on computer side)
@@ -19,11 +21,11 @@
  *
  * Frame sent to MatLab has the structure:
  *
- * 		12345678,12,123,\r\n
- *		   ^     ^   ^
- *		___|	 |   |____
- *	   |		 |   	  |
- *	  Load     Temp    Humidity
+ * 		12345678,12,123,123,\r\n
+ *		   ^     ^   ^	 ^__________
+ *		___|	 |   |____			|
+ *	   |		 |   	  |			|
+ *	  Load     Temp    Humidity	 Voltage
  *
  * Where the first eight characters represent a signed value from the
  * load cell, the next two are temperature in C, and the last three
@@ -38,7 +40,7 @@
 #include "thFunks.h"
 
 // defines
-#define FRAME_LENGTH  17		// length of max 24-bit number reading (2^(24) = 16777216, 8 chars long)
+#define FRAME_LENGTH  22		// length of max 24-bit number reading (2^(24) = 16777216, 8 chars long)
 #define BUFF_LENG	  4		// length of received UART buffer excluding the \n terminator
 #define	FULL_STP	  375		// for 50Hz PWM
 #define FULL_FOR	  480		// ""
@@ -52,6 +54,7 @@
 // functions
 void num2str24(long int);
 void th2str(volatile char*);
+void volt2str(float);
 long int absVal(long int);
 void pulseOut(char*);
 void pulseOutParabolic(char* cmd);
@@ -61,6 +64,7 @@ long int data;
 unsigned char sampDataFlag = 0, thState = 0, thRefreshFlag = 0;
 char buffer[BUFF_LENG], DHT_REST[2] = {5,10}, TH_REST_ST = 0;
 int loopCounter = 0;
+float adcMem, voltage;
 
 
 /*
@@ -71,17 +75,16 @@ int main(void){
 
   // TimerA0 interrupt init
   TA0CCTL0 = CCIE;                         	// CCR0 interrupt enabled
-//  CCR0 = 5000;								// 50 Hz PWM
-  TA0CCR0 = 500;								// 500 Hz PWM
+//  CCR0 = 5000;							// 50 Hz PWM
+  TA0CCR0 = 500;							// 500 Hz PWM
 //  CCR0 = 498;								// 500 hz pwm sync
   TA0CTL = TASSEL_2 | MC_1 | ID_2;       	// SMCLK, upmode, divide by 8 (1MHz / 4 = 250 kHz)
 
   // PWM init
-//  P1DIR |= BIT6;                            // P1.6 output
   P1SEL |= BIT6;                            // P1.6 for TA0.1 output
   P1SEL2 = 0;								// Select default function for P1.6
-  TA0CCTL1 = OUTMOD_7;                         // CCR1 reset/set
-  TA0CCR1 = FULL_STP;                          // CCR1 PWM duty cycle, init to STOP
+  TA0CCTL1 = OUTMOD_7;                      // CCR1 reset/set
+  TA0CCR1 = FULL_STP;                       // CCR1 PWM duty cycle, init to STOP
 
   // Temp/Humidity sensor initialization
   TA1CCTL0 = CCIE;                         	// CCR0 interrupt enabled
@@ -89,12 +92,17 @@ int main(void){
   int error;
   thInit();
 
-  // Port interupt
+  // Port interrupt (DHT sample frequency selector)
   P1REN |= BIT3;                   // Enable internal pull-up/down resistors
   P1OUT |= BIT3;                   //Select pull-up mode for P1.3
-  P1IE |= BIT3;                       // P1.3 interrupt enabled
-  P1IES |= BIT3;                     // P1.3 Hi/lo edge
+  P1IE |= BIT3;                    // P1.3 interrupt enabled
+  P1IES |= BIT3;                   // P1.3 Hi/lo edge
   P1IFG &= ~BIT3;                  // P1.3 IFG cleared
+
+  // ADC initialization
+  ADC10CTL0 = ADC10SHT_2 + ADC10ON + ADC10IE; // ADC10ON, interrupt enabled
+  ADC10CTL1 = INCH_3;                       // input A3
+  ADC10AE0 |= 0x08;                         // PA.3 ADC option select
 
 
   // other intializations
@@ -148,13 +156,18 @@ int main(void){
 //		  data = 0x0000;
 		  num2str24(data);
 
+		  // update voltage (auto-populates string, see ISR)
+		  ADC10CTL0 |= ENC + ADC10SC;             // Sampling and conversion start
+
+
+		  // if th data is new, refresh tx_str; else, replace with Xs and leave ADC voltage
 		  if(thRefreshFlag == 1){
 			  th2str(thBuffer);
 			  thRefreshFlag = 0;
 		  }
 		  else{
 			  unsigned char i;
-			  for(i=10; i<FRAME_LENGTH+1; i++){		// sign, 8bits, comma, 2 bits, comma, 3 bits
+			  for(i=10; i<18; i++){		// sign, 8bits, comma, 2 bits, comma, 3 bits
 				  if(i==13){
 					  continue;		// do not overwrite comma
 				  }
@@ -258,10 +271,18 @@ __interrupt void Timer_A1(void)
 #pragma vector=PORT1_VECTOR
 __interrupt void Port_1(void)
 {
-   TH_REST_ST ^= 0x01;
+   TH_REST_ST ^= 0x01;				   // Toggle sampling frequency (oversample / undersample)
    P1IFG &= ~BIT3;                     // P1.3 IFG cleared
 }
 
+// ADC10 interrupt service routine -- measure battery voltage
+#pragma vector=ADC10_VECTOR
+__interrupt void ADC10_ISR(void)
+{
+	adcMem = ADC10MEM;
+	voltage = 14.4*(adcMem/894);		// voltage divider with max voltage of 14.4 V means max adc val is 894
+	volt2str(voltage);
+}
 
 
 /*
@@ -360,6 +381,20 @@ void th2str(volatile char* thData){
 	tx_data_str[18] = ',';
 
 }
+
+void volt2str(float voltage){
+	int vt = voltage*100;
+
+	tx_data_str[23] = ',';		// end of string
+	tx_data_str[22] = vt%10+'0';
+	vt /= 10;
+	tx_data_str[21] = vt%10+'0';
+	vt /= 10;
+	tx_data_str[20] = vt%10+'0';
+	vt /= 10;
+	tx_data_str[19] = vt%10+'0';
+}
+
 
 /*
  *  === absVal ===
