@@ -29,7 +29,8 @@ void thInit(){
 	P1DIR |= DATA;
 }
 
-void thStart(){
+char thStart(){
+    char count = 0;
 	// set pin high
 	P1OUT |= DATA;
 	HOLD;
@@ -38,14 +39,14 @@ void thStart(){
 	P1OUT &= ~DATA;
 
 	// wait for 18 ms (unobtrusive, frees CPU)
-	TA1CCR0 = TA1R+5000;		// 18 ms * 250 kHz = 4500 cycles
+	return count = TA1R+5000;		// 18 ms * 250 kHz = 4500 cycles
 }
 
 int thRead(){
 	unsigned char thNdx, bit, checkSum;
 	unsigned int tic;
 
-	TA1CCTL2 &= ~CCIE;
+//	TA1CCTL2 &= ~CCIE;
 //	P1OUT |= DATA;
 //	__delay_cycles(5);
 
@@ -104,7 +105,7 @@ int thRead(){
 
 
 	P1DIR |= DATA;		// return to output
-	TA1CCR0 = TA1R+0xFFFF;	// maximum integer value
+//	TA1CCR0 = TA1R+0xFFFF;	// maximum integer value
 	restFlag = 1;
 	return 0;
 

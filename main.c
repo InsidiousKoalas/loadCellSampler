@@ -21,10 +21,10 @@
  *
  * Frame sent to MatLab has the structure:
  *
- * 		12345678,12,123,123,\r\n
- *		   ^     ^   ^	 ^__________
- *		___|	 |   |____			|
- *	   |		 |   	  |			|
+ * 		12345678,123,123,1234,\r\n
+ *		   ^     ^    ^	    ^
+ *		___|	 |    |___	|______
+ *	   |		 |        |		   |
  *	  Load     Temp    Humidity	 Voltage
  *
  * Where the first eight characters represent a signed value from the
@@ -45,10 +45,8 @@
 #define	FULL_STP	  375		// for 50Hz PWM
 #define FULL_FOR	  480		// ""
 #define FULL_REV 	  250		// ""
-//#define	FULL_STP	250		// for 500Hz PWM
-//#define FULL_FOR	490		// ""
-//#define FULL_REV	10		// ""
-
+#define SPRAY_ON      2500
+#define SPRAY_OFF     5000
 
 
 // functions
@@ -87,10 +85,18 @@ int main(void){
   TA0CCR1 = FULL_STP;                       // CCR1 PWM duty cycle, init to STOP
 
   // Temp/Humidity sensor initialization
-  TA1CCTL0 = CCIE;                         	// CCR0 interrupt enabled
-  TA1CTL = TASSEL_2 | MC_2 | ID_2;       	// SMCLK, contmode, divide by 8 (1MHz / 4 = 250 kHz)
+//  TA1CCTL0 = CCIE;                         	// CCR0 interrupt enabled
   int error;
+  char count;
   thInit();
+
+  // 50 Hz PWM init
+  TA1CTL = TASSEL_2 | MC_2 | ID_3;          // SMCLK, contmode, divide by 8 (1MHz / 8 = 125 kHz)
+  P2SEL |= BIT2;
+  P2SEL2 = 0;
+  TA1CCTL1 = OUTMOD_7;
+  TA1CCR0 = 25000;
+  TA1CCR1 = SPRAY_OFF;
 
   // Port interrupt (DHT sample frequency selector)
   P1REN |= BIT3;                   // Enable internal pull-up/down resistors
@@ -100,9 +106,9 @@ int main(void){
   P1IFG &= ~BIT3;                  // P1.3 IFG cleared
 
   // ADC initialization
-  ADC10CTL0 = ADC10SHT_2 + ADC10ON + ADC10IE; // ADC10ON, interrupt enabled
-  ADC10CTL1 = INCH_3;                       // input A3
-  ADC10AE0 |= 0x08;                         // PA.3 ADC option select
+  ADC10CTL0 = ADC10SHT_2 + ADC10ON + ADC10IE;   // ADC10ON, interrupt enabled
+  ADC10CTL1 = INCH_3;                           // input A3
+  ADC10AE0 |= 0x08;                             // P1.3 ADC option select
 
 
   // other intializations
@@ -134,9 +140,9 @@ int main(void){
 
 	  // if temp/humid sensor is ready to begin
 	  if(thState == 0){
-		  thStart();
+		  count = thStart();
 		  thState = 2;		// put into "wait" state
-		  TA1CCTL0 |= CCIE;
+//		  TA1CCTL0 |= CCIE;
 	  }
 	  else if(thState == 1){
 		  error = thRead();
@@ -147,6 +153,7 @@ int main(void){
 			  thRefreshFlag = 0;		// do not update; resample
 		  }
 		  thState = 3;
+		  count = TA1R + 65535;         // rest time for DHT
 //			  TA1CCTL0 |= CCIE;
 	  }
 
@@ -211,7 +218,17 @@ int main(void){
 
   }
 
-}
+  // check states of DHT
+  if((thState==2)&&(TA1R >= count))(thState = 1);       // if ready, sample DHT22
+  else if((thState==3)&&(TA1R>=count){
+      loopCounter++;
+      if(loopCounter==1){
+          thState = 0;
+      }
+  }
+
+
+}       // <------- end while loop
 
 
 
@@ -242,27 +259,27 @@ __interrupt void Timer_A0(void)
 #pragma vector=TIMER1_A0_VECTOR
 __interrupt void Timer_A1(void)
 {
-	// might not work, look into what triggers this interrupt
-	switch(thState){
-	case 0:				// ready to wake thSensor
-		break;
-	case 1:				// ready to sample thSensor
-		P2OUT ^= BIT0;
-		break;
-	case 2:				// was waiting for thSensor to wake
-		thState = 1;
-		break;
-	case 3:				// waiting for thSensor to rest
-		loopCounter++;
-		if(loopCounter >= DHT_REST[TH_REST_ST]){		// 10 loops ~=~ 2.5 seconds, max fs = 0.5hz
-			thState = 0;	// ready to wake sensor up
-			loopCounter = 0;
-		}
-		break;
-	default:
-		thState = 3;
-	}
-	TA1CCTL0 &= ~CCIFG;
+//	// might not work, look into what triggers this interrupt
+//	switch(thState){
+//	case 0:				// ready to wake thSensor
+//		break;
+//	case 1:				// ready to sample thSensor
+//		P2OUT ^= BIT0;
+//		break;
+//	case 2:				// was waiting for thSensor to wake
+//		thState = 1;
+//		break;
+//	case 3:				// waiting for thSensor to rest
+//		loopCounter++;
+//		if(loopCounter >= DHT_REST[TH_REST_ST]){		// 10 loops ~=~ 2.5 seconds, max fs = 0.5hz
+//			thState = 0;	// ready to wake sensor up
+//			loopCounter = 0;
+//		}
+//		break;
+//	default:
+//		thState = 3;
+//	}
+//	TA1CCTL0 &= ~CCIFG;
 }
 
 
