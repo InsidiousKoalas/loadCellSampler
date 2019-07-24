@@ -8,7 +8,7 @@
 #define uart_max 64
 
 unsigned char tx_data_str[uart_max], rx_data_str[uart_max], dec_str[6], eos_flag=0;
-char dec_char[6], cmdAry[5] = { "QSFRG" };
+char dec_char[6], cmdAry[7] = { "QSFRGMN" };
 int tx_ptr,e_tx_ptr, rx_ndx=0;
 
 void uart_init(int br){
@@ -92,7 +92,7 @@ __interrupt void USCI0RX_ISR(void)
 
 
 		// if a char is received, for it to first position
-		for(i=0; i<5; i++){		// 5 is # of command chars
+		for(i=0; i<7; i++){		// 7 is # of command chars (Q,S,F,R,G,M,N)
 			if(UCA0RXBUF == cmdAry[i])(rx_ndx = 0);
 		}
 

@@ -15,8 +15,10 @@
  * P1.2	-->	TX (RX on computer side)
  * P1.1 --> RX (TX on computer side)
  *
- * P1.6 -->	500 Hz PWM
+ * P1.6 -->	500 Hz PWM for ESC
  * P1.7	-->	Temp/Humidity sensor
+ *
+ * P2.2 --> 50 Hz PWM for spray
  *
  *
  * Frame sent to MatLab has the structure:
@@ -45,8 +47,8 @@
 #define	FULL_STP	  375		// for 50Hz PWM
 #define FULL_FOR	  480		// ""
 #define FULL_REV 	  250		// ""
-#define SPRAY_ON      2500
-#define SPRAY_OFF     5000
+#define SPRAY_ON      250
+#define SPRAY_OFF     500
 
 
 // functions
@@ -91,11 +93,12 @@ int main(void){
   thInit();
 
   // 50 Hz PWM init
-  TA1CTL = TASSEL_2 | MC_2 | ID_3;          // SMCLK, contmode, divide by 8 (1MHz / 8 = 125 kHz)
+  TA1CTL = TASSEL_2 | MC_1 | ID_2;          // SMCLK, upmode, divide by 4 (1MHz / 4 = 250 kHz)
   P2SEL |= BIT2;
   P2SEL2 = 0;
+  P2DIR |= BIT2;
   TA1CCTL1 = OUTMOD_7;
-  TA1CCR0 = 25000;
+  TA1CCR0 = 5000;
   TA1CCR1 = SPRAY_OFF;
 
   // Port interrupt (DHT sample frequency selector)
@@ -206,7 +209,11 @@ int main(void){
 			  __bis_SR_register(CPUOFF);			// turn off CPU
 		  }
 		  else if(buffer[0] == 'S' || buffer[0] == 'G'){			// Stop command
-			  CCR1 = FULL_STP;						// Stop motors
+			  TA0CCR1 = FULL_STP;						// Stop motors
+		  }
+		  else if(buffer[0] == 'M' || buffer[0] == 'N'){   // spray command
+		      if(buffer[0] == 'M')(TA1CCR1 = SPRAY_ON);
+		      else(TA1CCR1 = SPRAY_OFF);
 		  }
 		  else{
 			  pulseOut(buffer);
@@ -220,7 +227,7 @@ int main(void){
 
   // check states of DHT
   if((thState==2)&&(TA1R >= count))(thState = 1);       // if ready, sample DHT22
-  else if((thState==3)&&(TA1R>=count){
+  else if((thState==3)&&(TA1R>=count)){
       loopCounter++;
       if(loopCounter==1){
           thState = 0;
@@ -468,15 +475,13 @@ void pulseOut(char* cmd){
 	pctComm /= 100;
 	float temp;
 
-
+	// determine CCR1 for given PWM value
 	if((cmd[0] == 'F') || (cmd[0] == 'G')){
 		temp = (FULL_FOR-FULL_STP)*pctComm+FULL_STP;
-//		rx_ndx = 0;
 		CCR1 = (int) temp;
 	}
 	else if(cmd[0] == 'R'){
 		temp = (FULL_REV-FULL_STP)*pctComm+FULL_STP;
-//		rx_ndx = 0;
 		CCR1 = (int) temp;
 	}
 
