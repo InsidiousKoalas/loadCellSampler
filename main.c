@@ -47,8 +47,8 @@
 #define	FULL_STP	  375		// for 50Hz PWM
 #define FULL_FOR	  480		// ""
 #define FULL_REV 	  250		// ""
-#define SPRAY_ON      250
-#define SPRAY_OFF     500
+#define SPRAY_OFF     250
+#define SPRAY_ON      500
 
 
 // functions
@@ -71,177 +71,177 @@ float adcMem, voltage;
  * mainloop
  */
 int main(void){
-  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
+	WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
 
-  // TimerA0 interrupt init
-  TA0CCTL0 = CCIE;                         	// CCR0 interrupt enabled
-//  CCR0 = 5000;							// 50 Hz PWM
-  TA0CCR0 = 500;							// 500 Hz PWM
-//  CCR0 = 498;								// 500 hz pwm sync
-  TA0CTL = TASSEL_2 | MC_1 | ID_2;       	// SMCLK, upmode, divide by 8 (1MHz / 4 = 250 kHz)
+	// TimerA0 interrupt init
+	TA0CCTL0 = CCIE;                         	// CCR0 interrupt enabled
+	//  CCR0 = 5000;							// 50 Hz PWM
+	TA0CCR0 = 500;							// 500 Hz PWM
+	//  CCR0 = 498;								// 500 hz pwm sync
+	TA0CTL = TASSEL_2 | MC_1 | ID_2;       	// SMCLK, upmode, divide by 8 (1MHz / 4 = 250 kHz)
 
-  // PWM init
-  P1SEL |= BIT6;                            // P1.6 for TA0.1 output
-  P1SEL2 = 0;								// Select default function for P1.6
-  TA0CCTL1 = OUTMOD_7;                      // CCR1 reset/set
-  TA0CCR1 = FULL_STP;                       // CCR1 PWM duty cycle, init to STOP
+	// PWM init
+	P1SEL |= BIT6;                            // P1.6 for TA0.1 output
+	P1SEL2 = 0;								// Select default function for P1.6
+	TA0CCTL1 = OUTMOD_7;                      // CCR1 reset/set
+	TA0CCR1 = FULL_STP;                       // CCR1 PWM duty cycle, init to STOP
 
-  // Temp/Humidity sensor initialization
-  TA1CCTL0 = CCIE;                         	// CCR0 interrupt enabled
-  int error;
-  int count;
-  thInit();
+	// Temp/Humidity sensor initialization
+	TA1CCTL0 = CCIE;                         	// CCR0 interrupt enabled
+	int error;
+	int count;
+	thInit();
 
-  // 50 Hz PWM init
-  TA1CTL = TASSEL_2 | MC_1 | ID_2;          // SMCLK, upmode, divide by 4 (1MHz / 4 = 250 kHz)
-  P2SEL |= BIT2;
-  P2SEL2 = 0;
-  P2DIR |= BIT2;
-  TA1CCTL1 = OUTMOD_7;
-  TA1CCR0 = 5000;
-  TA1CCR1 = SPRAY_OFF;
+	// 50 Hz PWM init
+	TA1CTL = TASSEL_2 | MC_1 | ID_2;          // SMCLK, upmode, divide by 4 (1MHz / 4 = 250 kHz)
+	P2SEL |= BIT2;
+	P2SEL2 = 0;
+	P2DIR |= BIT2;
+	TA1CCTL1 = OUTMOD_7;
+	TA1CCR0 = 5000;
+	TA1CCR1 = SPRAY_OFF;
 
-  // Port interrupt (DHT sample frequency selector)
-  P1REN |= BIT3;                   // Enable internal pull-up/down resistors
-  P1OUT |= BIT3;                   //Select pull-up mode for P1.3
-  P1IE |= BIT3;                    // P1.3 interrupt enabled
-  P1IES |= BIT3;                   // P1.3 Hi/lo edge
-  P1IFG &= ~BIT3;                  // P1.3 IFG cleared
+	// Port interrupt (DHT sample frequency selector)
+	P1REN |= BIT3;                   // Enable internal pull-up/down resistors
+	P1OUT |= BIT3;                   //Select pull-up mode for P1.3
+	P1IE |= BIT3;                    // P1.3 interrupt enabled
+	P1IES |= BIT3;                   // P1.3 Hi/lo edge
+	P1IFG &= ~BIT3;                  // P1.3 IFG cleared
 
-  // ADC initialization
-  ADC10CTL0 = ADC10SHT_2 + ADC10ON + ADC10IE;   // ADC10ON, interrupt enabled
-  ADC10CTL1 = INCH_3;                           // input A3
-  ADC10AE0 |= 0x08;                             // P1.3 ADC option select
-
-
-  // other intializations
-  uart_init(8);							// initialize UART
-  loadCellInit();						// initialize pins for load cell
-  int gain = HI_GAIN;					// see loadCellFunks.h for different gain levels
-  P2DIR |= BIT0;		// enable GrLED
-  P2OUT &=~BIT0;
-
-  int timerCycles = 25000/CCR0;			// 0.1 sec * 125000 Hz / 511 cycles = 24.5 = 24 cycs
-
-  // Flash ReLED to verify initialization
-  P1DIR |= BIT0;				// enable ReLED
-  P1OUT |= BIT0;
-  __delay_cycles(0xFFFF);
-  __delay_cycles(0xFFFF);
-  __delay_cycles(0xFFFF);
-  P1OUT &= ~BIT0;
-  P1DIR &= ~BIT6;				// disable PWM on startup
+	// ADC initialization
+	ADC10CTL0 = ADC10SHT_2 + ADC10ON + ADC10IE;   // ADC10ON, interrupt enabled
+	ADC10CTL1 = INCH_3;                           // input A3
+	ADC10AE0 |= 0x08;                             // P1.3 ADC option select
 
 
-  th2str(thBuffer);		// init tx string
-  __bis_SR_register(CPUOFF);			// Turn off CPU, wait for start command
-//  pulseOut("F000");
+	// other intializations
+	uart_init(8);							// initialize UART
+	loadCellInit();						// initialize pins for load cell
+	int gain = HI_GAIN;					// see loadCellFunks.h for different gain levels
+	P2DIR |= BIT0;		// enable GrLED
+	P2OUT &=~BIT0;
+
+	int timerCycles = 25000/CCR0;			// 0.1 sec * 125000 Hz / 511 cycles = 24.5 = 24 cycs
+
+	// Flash ReLED to verify initialization
+	P1DIR |= BIT0;				// enable ReLED
+	P1OUT |= BIT0;
+	__delay_cycles(0xFFFF);
+	__delay_cycles(0xFFFF);
+	__delay_cycles(0xFFFF);
+	P1OUT &= ~BIT0;
+	P1DIR &= ~BIT6;				// disable PWM on startup
+
+
+	th2str(thBuffer);		// init tx string
+	__bis_SR_register(CPUOFF);			// Turn off CPU, wait for start command
+	//  pulseOut("F000");
 
 
 
-  while(1){
+	while(1){
 
-	  // if temp/humid sensor is ready to begin
-	  if(thState == 0){
-		  count = thStart();
-		  thState = 2;		// put into "wait" state
-		  loopCounter=0;    // reset loops
-//		  TA1CCTL0 |= CCIE;
-	  }
-	  else if(thState == 1){
-		  error = thRead();
-		  thRefreshFlag = 1;
+		// if temp/humid sensor is ready to begin
+		if(thState == 0){
+			count = thStart();
+			thState = 2;		// put into "wait" state
+			loopCounter=0;    // reset loops
+			//		  TA1CCTL0 |= CCIE;
+		}
+		else if(thState == 1){
+			error = thRead();
+			thRefreshFlag = 1;
 
-		  // if ( timeout or checksum error ) ...
-		  if(error == 1){
-			  thRefreshFlag = 0;		// do not update; resample
-		  }
-		  thState = 3;
-		  loopCounter = 0;
-//			  TA1CCTL0 |= CCIE;
-	  }
+			// if ( timeout or checksum error ) ...
+			if(error == 1){
+				thRefreshFlag = 0;		// do not update; resample
+			}
+			thState = 3;
+			loopCounter = 0;
+			//			  TA1CCTL0 |= CCIE;
+		}
 
-	  // if ( 100 ms have passed since previous sample ) ...
-	  if(sampDataFlag >= timerCycles){				// timerCycles*
-		  data = readData(gain);
-//		  data = 0x0000;
-		  num2str24(data);
+		// if ( 100 ms have passed since previous sample ) ...
+		if(sampDataFlag >= timerCycles){				// timerCycles*
+			data = readData(gain);
+			//		  data = 0x0000;
+			num2str24(data);
 
-		  // update voltage (auto-populates string, see ISR)
-		  ADC10CTL0 |= ENC + ADC10SC;             // Sampling and conversion start
-
-
-		  // if th data is new, refresh tx_str; else, replace with Xs and leave ADC voltage
-		  if(thRefreshFlag == 1){
-			  th2str(thBuffer);
-			  thRefreshFlag = 0;
-		  }
-		  else{
-			  unsigned char i;
-			  for(i=10; i<18; i++){		// sign, 8bits, comma, 2 bits, comma, 3 bits
-				  if(i==13){
-					  continue;		// do not overwrite comma
-				  }
-				  tx_data_str[i] = 'X';
-				  if(error == 1){
-					  tx_data_str[10] = 'E';
-					  error=0;
-				  }
-
-			  }
-		  }
-
-		  uart_write_string(0,FRAME_LENGTH+2);			// add one for sign, one for comma
-		  P1OUT ^= BIT0;							// Toggle P1.0, visual indicator
-		  sampDataFlag = 0;
-	  }
+			// update voltage (auto-populates string, see ISR)
+			ADC10CTL0 |= ENC + ADC10SC;             // Sampling and conversion start
 
 
-	  // if ( command has been received ) ...
-	  if(eos_flag != 0){
-		  unsigned char i;
+			// if th data is new, refresh tx_str; else, replace with Xs and leave ADC voltage
+			if(thRefreshFlag == 1){
+				th2str(thBuffer);
+				thRefreshFlag = 0;
+			}
+			else{
+				unsigned char i;
+				for(i=10; i<18; i++){		// sign, 8bits, comma, 2 bits, comma, 3 bits
+					if(i==13){
+						continue;		// do not overwrite comma
+					}
+					tx_data_str[i] = 'X';
+					if(error == 1){
+						tx_data_str[10] = 'E';
+						error=0;
+					}
 
-		  for(i=0; i<BUFF_LENG; i++){			// for ( each value in rx_data_str ) ...
-			  buffer[i] = uart_get_char(i);			// copy received leading char to buffer variable
-		  }
+				}
+			}
 
-		  if(buffer[0] == 'Q'){					// Quit command
-			  P1DIR &= ~BIT6;						// turn off PWM
-			  __bis_SR_register(CPUOFF);			// turn off CPU
-		  }
-		  else if(buffer[0] == 'S' || buffer[0] == 'G'){			// Stop command
-			  TA0CCR1 = FULL_STP;						// Stop motors
-		  }
-		  else if(buffer[0] == 'M' || buffer[0] == 'N'){   // spray command
-		      if(buffer[0] == 'M')(TA1CCR1 = SPRAY_ON);
-		      else(TA1CCR1 = SPRAY_OFF);
-		  }
-		  else{
-			  pulseOut(buffer);
-//			  pulseOutParabolic(buffer);
-		  }
-
-		  eos_flag = 0;		// clr eos_flag
-	  }
-
-  }
-
-  // check states of DHT
-  if((thState==2)&&(loopCounter>2)){
-      thState = 1;       // if ready, sample DHT22
-      loopCounter = 0;
-  }
-  else if((thState==3)&&(loopCounter>=28)){
-      thState = 0;
-//      loopCounter++;
-//      if(loopCounter>=28){      // 25 is 1/2 sec, give buffer
-//          thState = 0;
-//      }
-  }
+			uart_write_string(0,FRAME_LENGTH+2);			// add one for sign, one for comma
+			P1OUT ^= BIT0;							// Toggle P1.0, visual indicator
+			sampDataFlag = 0;
+		}
 
 
-}       // <------- end while loop
+		// if ( command has been received ) ...
+		if(eos_flag != 0){
+			unsigned char i;
 
+			for(i=0; i<BUFF_LENG; i++){			// for ( each value in rx_data_str ) ...
+				buffer[i] = uart_get_char(i);			// copy received leading char to buffer variable
+			}
+
+			if(buffer[0] == 'Q'){					// Quit command
+				P1DIR &= ~BIT6;						// turn off PWM
+				__bis_SR_register(CPUOFF);			// turn off CPU
+			}
+			else if(buffer[0] == 'S' || buffer[0] == 'G'){			// Stop command
+				TA0CCR1 = FULL_STP;						// Stop motors
+			}
+			else if(buffer[0] == 'M' || buffer[0] == 'N'){   // spray command
+				if(buffer[0] == 'M')(TA1CCR1 = SPRAY_ON);
+				else(TA1CCR1 = SPRAY_OFF);
+			}
+			else{
+				pulseOut(buffer);
+				//			  pulseOutParabolic(buffer);
+			}
+
+			eos_flag = 0;		// clr eos_flag
+		}
+
+
+
+		// check states of DHT
+		if((thState==2)&&(loopCounter>=1)){
+			thState = 1;       // if ready, sample DHT22
+			loopCounter = 0;
+		}
+		else if((thState==3)&&(loopCounter>=60)){
+			thState = 0;
+			//      loopCounter++;
+			//      if(loopCounter>=28){      // 25 is 1/2 sec, give buffer
+			//          thState = 0;
+			//      }
+		}
+
+
+	}       // <------- end while loop
+}	// <------- end main
 
 
 /*

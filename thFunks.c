@@ -19,10 +19,11 @@
 #include "thFunks.h"
 
 #define HOLD __delay_cycles(0x0FF);
-#define  CHK_TO	if(TA1R>(tic+30)){ P1DIR |= DATA; return 1;}
-
+//#define  CHK_TO	if(TA1R>(tic+30)){ P1DIR |= DATA; return 1;}
+#define CHK_TO	i++; if(i>300){P1DIR |= DATA;return 1;}
 
 volatile char thBuffer[5] = { 0 }, restFlag = 0;		// change to char when
+char bk1, bk2, bk3, bk4;
 
 // initialize function
 void thInit(){
@@ -44,7 +45,7 @@ int thStart(){
 
 int thRead(){
 	unsigned char thNdx, bit, checkSum;
-	unsigned int tic;
+	unsigned int i=0;
 
 //	TA1CCTL2 &= ~CCIE;
 //	P1OUT |= DATA;
@@ -53,20 +54,23 @@ int thRead(){
 	P1DIR &= ~DATA;		// switch dataline to input
 	__delay_cycles(5);
 	// ignore first DHT pulse
-	tic = TA1R;
+	i=0;
 	while(P1IN & DATA){	// trap line, wait to go low
-		CHK_TO
+		bk1++;
+		CHK_TO;
 	}
 	__delay_cycles(5);
 
-	tic = TA1R;
+	i=0;
 	while(!(P1IN & DATA)){	// trap line, wait to go high
+		bk2++;
 		CHK_TO
 	}
 	__delay_cycles(5);
 
-	tic = TA1R;
+	i=0;
 	while(P1IN & DATA){	// trap line again
+		bk3++;
 		CHK_TO
 	}
 	__delay_cycles(5);
@@ -77,8 +81,9 @@ int thRead(){
 		for(bit=0; bit<8; bit++){		// for ( each bit in byte ) ...
 			thBuffer[thNdx] <<= 1;
 
-			tic = TA1R;
+			i=0;
 			while(!(P1IN & DATA)){		// hold while line low, wait to go high
+				bk4++;
 				CHK_TO
 			}
 
@@ -87,6 +92,7 @@ int thRead(){
 //			tic = TA1R;
 //			while(TA1R<(tic+6));		// hold for length of clock pulse
 
+			i=0;
 			if(P1IN&DATA)(thBuffer[thNdx] |= 1);
 			while(P1IN & DATA){
 				CHK_TO
