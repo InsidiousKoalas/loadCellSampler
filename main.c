@@ -87,7 +87,7 @@ int main(void){
   TA0CCR1 = FULL_STP;                       // CCR1 PWM duty cycle, init to STOP
 
   // Temp/Humidity sensor initialization
-//  TA1CCTL0 = CCIE;                         	// CCR0 interrupt enabled
+  TA1CCTL0 = CCIE;                         	// CCR0 interrupt enabled
   int error;
   int count;
   thInit();
@@ -145,6 +145,7 @@ int main(void){
 	  if(thState == 0){
 		  count = thStart();
 		  thState = 2;		// put into "wait" state
+		  loopCounter=0;    // reset loops
 //		  TA1CCTL0 |= CCIE;
 	  }
 	  else if(thState == 1){
@@ -156,7 +157,7 @@ int main(void){
 			  thRefreshFlag = 0;		// do not update; resample
 		  }
 		  thState = 3;
-		  count = TA1R + 65535;         // rest time for DHT
+		  loopCounter = 0;
 //			  TA1CCTL0 |= CCIE;
 	  }
 
@@ -226,12 +227,16 @@ int main(void){
   }
 
   // check states of DHT
-  if((thState==2)&&(TA1R >= count))(thState = 1);       // if ready, sample DHT22
-  else if((thState==3)&&(TA1R>=count)){
-      loopCounter++;
-      if(loopCounter==3){
-          thState = 0;
-      }
+  if((thState==2)&&(loopCounter>2)){
+      thState = 1;       // if ready, sample DHT22
+      loopCounter = 0;
+  }
+  else if((thState==3)&&(loopCounter>=28)){
+      thState = 0;
+//      loopCounter++;
+//      if(loopCounter>=28){      // 25 is 1/2 sec, give buffer
+//          thState = 0;
+//      }
   }
 
 
@@ -263,30 +268,23 @@ __interrupt void Timer_A0(void)
  * well as after a sample is taken. The states are detailed in the source file.
  *
  */
-#pragma vector=TIMER1_A0_VECTOR
+//#pragma vector=TIMER1_A0_VECTOR
+//__interrupt void Timer_A1(void)
+//{
+////
+//}
+
+#pragma vector=TIMER1_A1_VECTOR
 __interrupt void Timer_A1(void)
 {
-//	// might not work, look into what triggers this interrupt
-//	switch(thState){
-//	case 0:				// ready to wake thSensor
-//		break;
-//	case 1:				// ready to sample thSensor
-//		P2OUT ^= BIT0;
-//		break;
-//	case 2:				// was waiting for thSensor to wake
-//		thState = 1;
-//		break;
-//	case 3:				// waiting for thSensor to rest
-//		loopCounter++;
-//		if(loopCounter >= DHT_REST[TH_REST_ST]){		// 10 loops ~=~ 2.5 seconds, max fs = 0.5hz
-//			thState = 0;	// ready to wake sensor up
-//			loopCounter = 0;
-//		}
-//		break;
-//	default:
-//		thState = 3;
-//	}
-//	TA1CCTL0 &= ~CCIFG;
+    switch(TA1IV){
+    case 0:
+        loopCounter++;      // case 0: TA1CCR0, triggers every 5000 clk cycs so 25 times every 0.5 sec
+        break;
+    default:
+        break;
+
+    }
 }
 
 
