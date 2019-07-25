@@ -268,24 +268,23 @@ __interrupt void Timer_A0(void)
  * well as after a sample is taken. The states are detailed in the source file.
  *
  */
-//#pragma vector=TIMER1_A0_VECTOR
-//__interrupt void Timer_A1(void)
-//{
-////
-//}
-
-#pragma vector=TIMER1_A1_VECTOR
+#pragma vector=TIMER1_A0_VECTOR
 __interrupt void Timer_A1(void)
 {
-    switch(TA1IV){
-    case 0:
-        loopCounter++;      // case 0: TA1CCR0, triggers every 5000 clk cycs so 25 times every 0.5 sec
-        break;
-    default:
-        break;
-
-    }
+    loopCounter++;
 }
+
+//#pragma vector=TIMER1_A1_VECTOR
+//__interrupt void Timer_A1(void)
+//{
+//    switch(TA1IV){
+//    case 0:
+//        loopCounter++;      // case 0: TA1CCR0, triggers every 5000 clk cycs so 25 times every 0.5 sec
+//        break;
+//    default:
+//        break;
+//    }
+//}
 
 
 
