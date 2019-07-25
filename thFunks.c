@@ -29,8 +29,8 @@ void thInit(){
 	P1DIR |= DATA;
 }
 
-char thStart(){
-    char count = 0;
+int thStart(){
+    int count = 0;
 	// set pin high
 	P1OUT |= DATA;
 	HOLD;

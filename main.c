@@ -89,7 +89,7 @@ int main(void){
   // Temp/Humidity sensor initialization
 //  TA1CCTL0 = CCIE;                         	// CCR0 interrupt enabled
   int error;
-  char count;
+  int count;
   thInit();
 
   // 50 Hz PWM init
@@ -229,7 +229,7 @@ int main(void){
   if((thState==2)&&(TA1R >= count))(thState = 1);       // if ready, sample DHT22
   else if((thState==3)&&(TA1R>=count)){
       loopCounter++;
-      if(loopCounter==1){
+      if(loopCounter==3){
           thState = 0;
       }
   }

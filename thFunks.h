@@ -15,7 +15,7 @@
 extern volatile char thBuffer[5], restFlag, sampNdx;
 
 void thInit();
-char thStart();
+int thStart();
 int thRead();
 
 
